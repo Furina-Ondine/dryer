@@ -5,10 +5,12 @@ from functools import lru_cache
 
 @lru_cache(maxsize=None)
 def parser_for(language: str):
-    from tree_sitter_language_pack import download, get_parser
+    import tree_sitter_language_pack as pack
 
-    download([language])
-    return get_parser(language)
+    download = getattr(pack, "download", None)
+    if download is not None:
+        download([language])
+    return pack.get_parser(language)
 
 
 def parse(source: str, language: str):
