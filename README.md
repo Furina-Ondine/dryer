@@ -50,7 +50,7 @@ On Windows, use PowerShell 7.3 or newer:
 
 ```powershell
 .\dryer.ps1 --help
-.\dryer.ps1 --root "D:\My Project"
+.\dryer.ps1 --root ..\my-project
 ```
 
 On Linux and macOS:
