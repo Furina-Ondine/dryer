@@ -49,7 +49,7 @@ Options:
   --text                        Same as --format text.
 
 Arguments:
-  path              File or directory to compare. Test paths are included when
+  path              File or directory to compare. Test files are included when
                     you name them explicitly.
   filter            When the argument is not a path, only source files whose
                     path contains this text are compared.
@@ -61,7 +61,8 @@ named {_skipped_directory_text()} are skipped, as are *_test.go, *.test.cts,
 Clojure compares every top-level form except ns. The other languages compare
 functions and methods. A form is only compared with forms in the same language.
 C# also compares constructors, operators, explicit accessors and expression-bodied
-properties/indexers. Generated *.g.cs, *.g.i.cs and *.Designer.cs files are skipped.
+properties/indexers. Top-level statements form one candidate. Generated *.g.cs,
+*.g.i.cs and *.Designer.cs files are skipped.
 
 Exit codes:
   0  the report was written

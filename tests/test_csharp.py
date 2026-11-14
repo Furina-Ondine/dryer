@@ -124,3 +124,30 @@ def test_csharp_cli_reports_structural_duplicates_and_writes_csharp_metrics(tmp_
     assert "right.cs:2-6" in captured.out
     metrics = (tmp_path / ".metrics" / "dry.edn").read_text(encoding="utf-8")
     assert ':language "csharp"' in metrics
+
+
+def test_csharp_top_level_statements_form_one_candidate_with_local_functions_inside():
+    source = """using System;
+var input = Read();
+int Adjust(int value) => value + 1;
+var callback = (int value) => value + 2;
+Console.WriteLine(Adjust(input));
+class C {
+  int Member() => 1;
+}
+"""
+    assert [(entry.start_line, entry.end_line) for entry in entries(source)] == [(2, 5), (7, 7)]
+    renamed = source.replace("input", "argument").replace("callback", "transform").replace("value", "item")
+    left = entries(source, "left.cs")[0]
+    right = entries(renamed, "right.cs")[0]
+    assert find_duplicates([left, right], 0.99)[0].score == 1.0
+    assert entries("using System;\nclass C { int Automatic { get; set; } }\n") == []
+
+
+@pytest.mark.parametrize("operation", ["Filter(value)", "Filter<int>(value)"])
+def test_csharp_conditional_calls_preserve_called_operations(operation):
+    source = f"class C {{ object First(object source, int value) => source?.{operation}; }}"
+    renamed = source.replace("First", "Second").replace("source", "items").replace("value", "item")
+    changed = source.replace("Filter", "Select")
+    assert score(source, renamed) == 1.0
+    assert score(source, changed) < 1.0

@@ -27,6 +27,23 @@ The public language key is `csharp`; the parser grammar is `c_sharp`. Existing
    0 survived, 0 uncovered**. This executes every supported mutation regardless
    of coverage filtering. Mutator has no sites for the language/node-type
    lookup tables, whose behavior is checked by the C# tests.
+   An initial custom test command assumed an environment variable that Mutator
+   does not provide and failed its baseline; the reported successful run uses
+   the standard Python runner.
+
+## 2026-11-14: modern C# executable forms
+
+1. Added three failing behavior cases: top-level executable statements were
+   missing, and both ordinary and generic conditional calls lost their callee
+   names (`Filter` and `Select` had identical fingerprints).
+2. Grouped top-level statements into one candidate, keeping local functions and
+   lambdas inside it. Reused one entry builder for ordinary and grouped forms.
+   Added conditional/member-binding normalization through the existing attribute
+   path so conditional call names survive.
+3. The full suite passed **107 tests**. Crapper passed all modified analysis
+   modules (maximum CRAP **8.2**, top-level grouping **3.0** at 100% coverage).
+   Dryer found no duplicate at **0.8**. A fresh complete mutation run passed:
+   **112 killed, 0 survived, 0 uncovered**, using the same command below.
 
 Reproduce from the repository root with the local companion repositories:
 

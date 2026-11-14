@@ -12,7 +12,7 @@ from dryer.astnorm import normalize
 from dryer.clojure_read import is_candidate_form, max_line, normalize as normalize_clj
 from dryer.clojure_read import read_source
 from dryer.model import Entry
-from dryer.shape import fingerprints, node_count
+from dryer.shape import K, fingerprints, node_count
 from dryer.treesitter import child_of_type, descendants, end_line, node_text, parse, start_line
 
 _TS_FUNCTION = {
@@ -175,25 +175,35 @@ _PICKERS = {
 }
 
 
+def _entry(language: str, file: str, first, last, normalized) -> Entry:
+    return Entry(
+        language=language,
+        file=file,
+        start_line=start_line(first),
+        end_line=end_line(last),
+        nodes=node_count(normalized),
+        fingerprints=fingerprints(normalized),
+    )
+
+
+def _csharp_top_level(data: bytes, root, file: str) -> list[Entry]:
+    statements = [node for node in root.named_children if node.type == "global_statement"]
+    if not statements:
+        return []
+    normalized = [K("top_level"), *(normalize(node, data) for node in statements)]
+    return [_entry("csharp", file, statements[0], statements[-1], normalized)]
+
+
 def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entry]:
     grammar_or_name, pick = _PICKERS[language]
     grammar = grammar_or_name(path) if callable(grammar_or_name) else grammar_or_name
     data, tree = parse(source, grammar)
-    entries = []
+    entries = _csharp_top_level(data, tree.root_node, file) if language == "csharp" else []
     for node in pick(data, tree.root_node):
         normalized = normalize(node, data)
         if normalized is None:
             continue
-        entries.append(
-            Entry(
-                language=language,
-                file=file,
-                start_line=start_line(node),
-                end_line=end_line(node),
-                nodes=node_count(normalized),
-                fingerprints=fingerprints(normalized),
-            )
-        )
+        entries.append(_entry(language, file, node, node, normalized))
     return entries
 
 

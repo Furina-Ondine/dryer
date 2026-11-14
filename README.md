@@ -44,9 +44,11 @@ What stays is the call or method name, the operator, and the shape of the tree. 
 C# (`.cs`, reported as `csharp`) compares methods, constructors, destructors,
 operators and conversions, explicit property/indexer/event accessors, and
 expression-bodied properties and indexers. Local functions and lambdas remain
-inside their enclosing member. Abstract declarations and automatic accessors
+inside their enclosing member. Top-level statements form one candidate spanning
+those statements, including their local functions and lambdas. Abstract declarations and automatic accessors
 have no executable body and do not become candidates. Call names and constructed
-types stay in the fingerprints; generic type arguments, local names and ordinary
+types stay in the fingerprints, including conditional calls such as `value?.Run()`;
+generic type arguments, local names and ordinary
 field names normalize away. No .NET SDK or build is needed for structural scans.
 
 Default discovery skips .NET `bin`, `obj` and `TestResults` directories and C#

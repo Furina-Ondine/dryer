@@ -132,6 +132,8 @@ _ATTRIBUTES = {
     "field_access",
     "field_expression",
     "member_access_expression",
+    "conditional_access_expression",
+    "member_binding_expression",
 }
 
 _SCOPED = {
