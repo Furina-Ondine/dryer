@@ -1,6 +1,6 @@
 # dryer
 
-dryer finds candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, and Python. One run detects the language of each source file, normalizes that language's forms, and reports pairs whose structure is close enough to review.
+dryer finds candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, Python, and C#. One run detects the language of each source file, normalizes that language's forms, and reports pairs whose structure is close enough to review.
 
 Clojure follows [dry4clj](https://github.com/unclebob/dry4clj). The other languages use the same idea on the functions and methods [crapper](https://github.com/unclebob/crapper) and [mutator](https://github.com/unclebob/mutator) already treat as one unit. A form is only compared with forms written in the same language.
 
@@ -40,6 +40,19 @@ def beta(items):
 ```
 
 What stays is the call or method name, the operator, and the shape of the tree. What drops out is the local name, the field name, the literal, and the keyword. A Clojure keyword call `(:kind m)` and `(:id row)` is the same shape. So is `order.total` and `row.amount`.
+
+C# (`.cs`, reported as `csharp`) compares methods, constructors, destructors,
+operators and conversions, explicit property/indexer/event accessors, and
+expression-bodied properties and indexers. Local functions and lambdas remain
+inside their enclosing member. Abstract declarations and automatic accessors
+have no executable body and do not become candidates. Call names and constructed
+types stay in the fingerprints; generic type arguments, local names and ordinary
+field names normalize away. No .NET SDK or build is needed for structural scans.
+
+Default discovery skips .NET `bin`, `obj` and `TestResults` directories and C#
+generated filenames ending in `.g.cs`, `.g.i.cs` or `.Designer.cs` (case insensitive).
+The normal minimum of four source lines applies to C# too; use `--min-lines 1`
+to include short expression-bodied members.
 
 ## Run
 

@@ -59,6 +59,9 @@ _LITERALS = {
     "undefined",
     "null_literal",
     "boolean_literal",
+    "real_literal",
+    "verbatim_string_literal",
+    "raw_string_literal",
     "template_string",
     "regex",
     "regex_literal",
@@ -119,6 +122,7 @@ _CALLS = {
     "method_invocation",
     "object_creation_expression",
     "new_expression",
+    "invocation_expression",
 }
 
 _ATTRIBUTES = {
@@ -127,15 +131,18 @@ _ATTRIBUTES = {
     "selector_expression",
     "field_access",
     "field_expression",
+    "member_access_expression",
 }
 
 _SCOPED = {
     "scoped_identifier",
     "scoped_type_identifier",
+    "qualified_name",
+    "generic_name",
 }
 
 _ARG_LISTS = {"argument_list", "arguments"}
-_TYPE_ARGS = {"type_arguments", "type_parameters"}
+_TYPE_ARGS = {"type_arguments", "type_parameters", "type_argument_list"}
 
 _DATA: bytes = b""
 

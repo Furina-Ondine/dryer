@@ -21,6 +21,7 @@ EXTENSIONS = {
     ".cts": "typescript",
     ".rs": "rust",
     ".py": "python",
+    ".cs": "csharp",
 }
 
 SKIP_DIRS = {
@@ -41,6 +42,9 @@ SKIP_DIRS = {
     "testdata",
     "__pycache__",
     ".clj-kondo",
+    "bin",
+    "obj",
+    "TestResults",
 }
 
 TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
@@ -49,7 +53,7 @@ TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
 def language_of(path: str | Path) -> str | None:
     file_path = Path(path)
     name = file_path.name
-    if name.endswith(".d.ts"):
+    if name.endswith(".d.ts") or name.lower().endswith((".g.cs", ".g.i.cs", ".designer.cs")):
         return None
     return EXTENSIONS.get(file_path.suffix)
 
