@@ -1,0 +1,39 @@
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.14']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: tool source
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tool source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            .venv/Scripts/python -m pip install -e '.[dev]'
+          else
+            .venv/bin/python -m pip install -e '.[dev]'
+          fi
+      - name: Test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            .venv/Scripts/python -m pytest
+          else
+            .venv/bin/python -m pytest
+          fi

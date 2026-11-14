@@ -43,14 +43,37 @@ What stays is the call or method name, the operator, and the shape of the tree. 
 
 ## Run
 
+Requires Python 3.11 or newer. The repository launchers create a local `.venv`
+and install dryer on first use. Git is needed for `--changed`.
+
+On Windows, use PowerShell or Command Prompt:
+
+```powershell
+.\dryer.cmd --help
+.\dryer.cmd --root "D:\My Project"
+```
+
+On Linux and macOS:
+
 ```bash
 ./dryer
 ```
 
-The first run creates `.venv` and installs the tool. From a project root it walks the tree, skips `test`, `spec`, `vendor`, `node_modules`, and `target`, and writes two results:
+From a project root it walks the tree, skips `test`, `spec`, `vendor`, `node_modules`, and `target`, and writes two results:
 
 - a report on stdout, closest match first
 - `.metrics/dry.edn`, replaced on every successful analysis
+
+Run the launcher by its full path to analyze another project, or pass `--root`.
+Quote paths that contain spaces. After installation, `python -m dryer` and the
+installed `dryer` command accept the same arguments on all three platforms.
+CLI output and metrics files use UTF-8, including when output is redirected from
+a legacy Windows code page. For redirected output, read the bytes as UTF-8.
+
+Installation needs package-index access. With tree-sitter-language-pack 1.x,
+the first scan of a language also downloads its parser from GitHub and caches
+it locally; later scans reuse it. The bundled-parser 0.x releases supported by
+the dependency range work without that download.
 
 ```bash
 ./dryer src/demo src/ui          # these files and trees
@@ -108,8 +131,22 @@ A missing or unreadable Clojure form is reported on stderr. Forms read before it
 
 ## Development
 
+Windows:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Linux and macOS:
+
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python -m pytest
 ```
+
+CI runs the suite on Windows, Linux, and macOS with Python 3.11 and 3.14.
+It includes real CLI scans and Git status checks under paths with spaces,
+Chinese characters, and characters outside GBK, plus strict GBK output tests.
