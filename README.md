@@ -46,11 +46,11 @@ What stays is the call or method name, the operator, and the shape of the tree. 
 Requires Python 3.11 or newer. The repository launchers create a local `.venv`
 and install dryer on first use. Git is needed for `--changed`.
 
-On Windows, use PowerShell or Command Prompt:
+On Windows, use PowerShell 7.3 or newer:
 
 ```powershell
-.\dryer.cmd --help
-.\dryer.cmd --root "D:\My Project"
+.\dryer.ps1 --help
+.\dryer.ps1 --root "D:\My Project"
 ```
 
 On Linux and macOS:

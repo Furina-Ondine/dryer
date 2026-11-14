@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -89,7 +90,7 @@ def test_native_launcher_preserves_arguments_and_exit_codes(tmp_path):
     root = _project(tmp_path)
     repository = Path(__file__).resolve().parents[1]
     if sys.platform == "win32":
-        command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", "call", str(repository / "dryer.cmd")]
+        command = ["pwsh", "-NoProfile", "-File", str(repository / "dryer.ps1")]
     else:
         command = ["sh", str(repository / "dryer")]
     env = dict(os.environ, PYTHONIOENCODING="utf-8:strict")
@@ -106,3 +107,38 @@ def test_native_launcher_preserves_arguments_and_exit_codes(tmp_path):
         [*command, "--format", "invalid"], capture_output=True, env=env, check=False
     )
     assert bad_option.returncode == 2
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell launcher")
+def test_powershell_launcher_preserves_native_arguments_and_the_callers_directory(tmp_path):
+    shim = tmp_path / "native shim"
+    shim.mkdir()
+    (shim / "dryer.py").write_text(
+        "import json, os, pathlib, sys\n"
+        "pathlib.Path(os.environ['DRYER_ARGUMENTS']).write_text(\n"
+        "    json.dumps({'args': sys.argv[1:], 'cwd': os.getcwd()}, ensure_ascii=False),\n"
+        "    encoding='utf-8')\n"
+        "raise SystemExit(37)\n",
+        encoding="utf-8",
+    )
+    root = _project(tmp_path)
+    capture = tmp_path / "arguments.json"
+    env = dict(os.environ, PYTHONPATH=str(shim), DRYER_ARGUMENTS=str(capture))
+    launcher = Path(__file__).resolve().parents[1] / "dryer.ps1"
+    arguments = [
+        "--root", str(root), "a&b; Write-Output pwned", "%PATH%", "$HOME", "bang!",
+        "`literal", 'quoted"value', "C:\\trailing\\", "", "中文 🧪",
+    ]
+    result = subprocess.run(
+        [shutil.which("pwsh") or "pwsh", "-NoProfile", "-File", str(launcher), *arguments],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 37, result.stderr.decode("utf-8", errors="replace")
+    import json
+
+    captured = json.loads(capture.read_text(encoding="utf-8"))
+    assert captured["args"] == arguments
+    assert Path(captured["cwd"]) == root
