@@ -1,4 +1,4 @@
-"""Normalize a tree-sitter tree the way dry4clj normalizes a Clojure form.
+"""Normalize a syntax tree the way dry4clj normalizes a Clojure form.
 
 The name in call position stays: `filter`, `Println`, `map`, an operator, the
 type constructed by `new`. Local names, field names, type names in argument
@@ -59,9 +59,6 @@ _LITERALS = {
     "undefined",
     "null_literal",
     "boolean_literal",
-    "real_literal",
-    "verbatim_string_literal",
-    "raw_string_literal",
     "template_string",
     "regex",
     "regex_literal",
@@ -122,7 +119,6 @@ _CALLS = {
     "method_invocation",
     "object_creation_expression",
     "new_expression",
-    "invocation_expression",
 }
 
 _ATTRIBUTES = {
@@ -131,20 +127,16 @@ _ATTRIBUTES = {
     "selector_expression",
     "field_access",
     "field_expression",
-    "member_access_expression",
-    "conditional_access_expression",
-    "member_binding_expression",
 }
 
 _SCOPED = {
     "scoped_identifier",
     "scoped_type_identifier",
-    "qualified_name",
-    "generic_name",
+    "generic_type",
 }
 
 _ARG_LISTS = {"argument_list", "arguments"}
-_TYPE_ARGS = {"type_arguments", "type_parameters", "type_argument_list"}
+_TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
 
@@ -164,8 +156,15 @@ def _text(node) -> str:
 _PENDING = object()
 
 
+def _is(node, role: str, legacy=()) -> bool:
+    roles = getattr(node, "roles", None)
+    if roles is None:
+        return node.type in legacy
+    return role in roles
+
+
 def _is_literal(node) -> bool:
-    if node.type not in _LITERALS:
+    if not _is(node, "literal", _LITERALS):
         return False
     if node.type == "string" and any(child.type == "interpolation" for child in node.children):
         return False
@@ -174,27 +173,28 @@ def _is_literal(node) -> bool:
 
 def _named_before_args(node):
     incoming = []
-    for child in node.named_children:
-        if child.type in _ARG_LISTS:
-            return incoming, child
+    named = list(node.named_children)
+    for index, child in enumerate(named):
+        if _is(child, "arguments", _ARG_LISTS):
+            return incoming, child, named[index + 1 :]
         incoming.append(child)
-    return incoming, None
+    return incoming, None, []
 
 
 def _without_type_args(nodes):
-    type_args = [child for child in nodes if child.type in _TYPE_ARGS]
-    rest = [child for child in nodes if child.type not in _TYPE_ARGS]
+    type_args = [child for child in nodes if _is(child, "type_arguments", _TYPE_ARGS)]
+    rest = [child for child in nodes if not _is(child, "type_arguments", _TYPE_ARGS)]
     return rest, type_args
 
 
 def _callee_leaf(node):
-    if node.type in _IDENTIFIERS:
+    if _is(node, "identifier", _IDENTIFIERS):
         return [K("symbol"), _text(node)]
     return _PENDING
 
 
 def _named_leaf(node, head: bool):
-    if node.type in _IDENTIFIERS:
+    if _is(node, "identifier", _IDENTIFIERS):
         if head:
             return [K("symbol"), _text(node)]
         return K("symbol")
@@ -208,17 +208,23 @@ def _try_leaf(node, mode: str, head: bool):
         return _callee_leaf(node)
     if mode == "path":
         return _PENDING
-    if node.type in _SKIP:
+    if _is(node, "metadata", _SKIP):
         return None
-    if node.type in _OPERATORS:
-        return [K("symbol"), node.type]
+    if _is(node, "operator", _OPERATORS):
+        return [K("symbol"), _text(node)]
+    leaf = _named_leaf(node, head)
+    if leaf is not _PENDING:
+        return leaf
     if not node.is_named:
         return None
-    return _named_leaf(node, head)
+    return _PENDING
 
 
 def _call_jobs(node):
-    incoming, args = _named_before_args(node)
+    named = list(node.named_children)
+    if any(_is(child, "callee") for child in named):
+        return [(child, "callee" if _is(child, "callee") else "norm", False) for child in named]
+    incoming, args, trailing = _named_before_args(node)
     rest, type_args = _without_type_args(incoming)
     jobs = []
     if rest:
@@ -228,6 +234,7 @@ def _call_jobs(node):
     jobs.extend((child, "norm", False) for child in type_args)
     if args is not None:
         jobs.append((args, "norm", False))
+    jobs.extend((child, "norm", False) for child in trailing)
     return jobs
 
 
@@ -237,7 +244,7 @@ def _attr_jobs(node, head: bool):
         return []
     *objects, name = named
     jobs = [(obj, "norm", False) for obj in objects]
-    if name.type in _IDENTIFIERS:
+    if _is(name, "identifier", _IDENTIFIERS):
         return jobs
     if head:
         jobs.append((name, "callee", False))
@@ -248,10 +255,10 @@ def _attr_jobs(node, head: bool):
 
 def _path_jobs(node):
     jobs = []
-    for child in node.named_children:
-        if child.type in _IDENTIFIERS:
+    for child in node.children:
+        if _is(child, "identifier", _IDENTIFIERS):
             continue
-        if child.type in _SCOPED or child.type == "generic_type":
+        if _is(child, "name_path", _SCOPED):
             jobs.append((child, "path", False))
         else:
             jobs.append((child, "norm", False))
@@ -259,9 +266,9 @@ def _path_jobs(node):
 
 
 def _callee_jobs(node):
-    if node.type in _ATTRIBUTES:
+    if _is(node, "member_access", _ATTRIBUTES):
         return _attr_jobs(node, True)
-    if node.type in _SCOPED or node.type == "generic_type":
+    if _is(node, "name_path", _SCOPED):
         return _path_jobs(node)
     return [(node, "norm", True)]
 
@@ -271,11 +278,11 @@ def _jobs(node, mode: str, head: bool):
         return _callee_jobs(node)
     if mode == "path":
         return _path_jobs(node)
-    if node.type == "parenthesized_expression" and len(node.named_children) == 1:
+    if _is(node, "group", {"parenthesized_expression"}) and len(node.named_children) == 1:
         return [(node.named_children[0], "norm", head)]
-    if node.type in _CALLS:
+    if _is(node, "call", _CALLS):
         return _call_jobs(node)
-    if node.type in _ATTRIBUTES:
+    if _is(node, "member_access", _ATTRIBUTES):
         return _attr_jobs(node, head)
     return [(child, "norm", False) for child in node.children]
 
@@ -283,7 +290,7 @@ def _jobs(node, mode: str, head: bool):
 def _name_value(name, head: bool, cache):
     """Keep a member's spelling when it is the thing being called."""
 
-    if name.type in _IDENTIFIERS:
+    if _is(name, "identifier", _IDENTIFIERS):
         if head:
             return [K("symbol"), _text(name)]
         return K("symbol")
@@ -293,22 +300,9 @@ def _name_value(name, head: bool, cache):
 
 
 def _assemble_call(node, cache):
-    incoming, args = _named_before_args(node)
-    rest, type_args = _without_type_args(incoming)
     out = [K(node.type)]
-    if rest:
-        *receivers, callee = rest
-        for child in receivers:
-            norm = cache[(id(child), "norm", False)]
-            if norm is not None:
-                out.append(norm)
-        out.append(cache[(id(callee), "callee", False)])
-    for child in type_args:
-        norm = cache[(id(child), "norm", False)]
-        if norm is not None:
-            out.append(norm)
-    if args is not None:
-        norm = cache[(id(args), "norm", False)]
+    for child, mode, head in _call_jobs(node):
+        norm = cache[(id(child), mode, head)]
         if norm is not None:
             out.append(norm)
     return out
@@ -334,10 +328,10 @@ def _assemble_path(node, cache):
     """A callee path keeps each name in the path. Type arguments stay structural."""
 
     parts = [K(node.type)]
-    for child in node.named_children:
-        if child.type in _IDENTIFIERS:
+    for child in node.children:
+        if _is(child, "identifier", _IDENTIFIERS):
             parts.append([K("symbol"), _text(child)])
-        elif child.type in _SCOPED or child.type == "generic_type":
+        elif _is(child, "name_path", _SCOPED):
             parts.append(cache[(id(child), "path", False)])
         else:
             norm = cache[(id(child), "norm", False)]
@@ -347,9 +341,9 @@ def _assemble_path(node, cache):
 
 
 def _callee_value(node, cache):
-    if node.type in _ATTRIBUTES:
+    if _is(node, "member_access", _ATTRIBUTES):
         return _assemble_attr(node, True, cache)
-    if node.type in _SCOPED or node.type == "generic_type":
+    if _is(node, "name_path", _SCOPED):
         return _assemble_path(node, cache)
     return cache[(id(node), "norm", True)]
 
@@ -368,12 +362,12 @@ def _assemble(node, mode: str, head: bool, cache):
         return _callee_value(node, cache)
     if mode == "path":
         return _assemble_path(node, cache)
-    if node.type == "parenthesized_expression" and len(node.named_children) == 1:
+    if _is(node, "group", {"parenthesized_expression"}) and len(node.named_children) == 1:
         child = node.named_children[0]
         return cache[(id(child), "norm", head)]
-    if node.type in _CALLS:
+    if _is(node, "call", _CALLS):
         return _assemble_call(node, cache)
-    if node.type in _ATTRIBUTES:
+    if _is(node, "member_access", _ATTRIBUTES):
         return _assemble_attr(node, head, cache)
     return _assemble_children(node, cache)
 

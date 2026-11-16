@@ -41,7 +41,8 @@ def beta(items):
 
 What stays is the call or method name, the operator, and the shape of the tree. What drops out is the local name, the field name, the literal, and the keyword. A Clojure keyword call `(:kind m)` and `(:id row)` is the same shape. So is `order.total` and `row.amount`.
 
-C# (`.cs`, reported as `csharp`) compares methods, constructors, destructors,
+C# (`.cs`, reported as `csharp`) uses the shared Crapper compiler front end to
+compare methods, constructors, destructors,
 operators and conversions, explicit property/indexer/event accessors, and
 expression-bodied properties and indexers. Local functions and lambdas remain
 inside their enclosing member. Top-level statements form one candidate spanning
@@ -49,10 +50,42 @@ those statements, including their local functions and lambdas. Abstract declarat
 have no executable body and do not become candidates. Call names and constructed
 types stay in the fingerprints, including conditional calls such as `value?.Run()`;
 generic type arguments, local names and ordinary
-field names normalize away. No .NET SDK or build is needed for structural scans.
+field names normalize away. Roslyn supplies native compiler syntax; the existing
+normalizer, structural fingerprints and Jaccard comparison calculate the score.
+The source project's application does not need to be built for structural scans.
 
-Default discovery skips .NET `bin`, `obj` and `TestResults` directories and C#
+C# analysis requires a compatible Crapper installation in Dryer's Python
+environment, or a `crapper` checkout next to the `dryer` checkout, and a .NET SDK.
+The shared front end uses the selected SDK's Roslyn compiler and owns member
+boundaries for all three companion tools. C# syntax errors are reported before
+a new metrics snapshot is written. Other language scans keep their existing
+tree-sitter parsers and Python dependencies.
+
+For sibling checkouts, the repository layout is:
+
+```text
+workspace/
+  crapper/
+  dryer/
+```
+
+To use separately installed tools, install the compatible Crapper source into
+the same virtual environment, for example:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install ..\crapper
+```
+
+The three-platform CI matrix uses .NET SDK 10 and checks out the same owner's
+Crapper default branch. Merge or release the shared Crapper front end before
+enabling the corresponding Dryer release or rerunning that CI dependency.
+
+Default discovery skips .NET `bin`, `obj`, `TestResults`, `.artifacts`, `.vs` and
+`BenchmarkDotNet.Artifacts` directories and C#
 generated filenames ending in `.g.cs`, `.g.i.cs` or `.Designer.cs` (case insensitive).
+It also skips test project directories ending in `.Tests` or `.Test` (case
+insensitive), and files ending in `Tests.cs` or `Test.cs`. A named test file is
+still included when passed explicitly; walking a directory keeps these filters.
 The normal minimum of four source lines applies to C# too; use `--min-lines 1`
 to include short expression-bodied members.
 

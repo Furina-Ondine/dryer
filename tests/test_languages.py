@@ -610,3 +610,13 @@ def test_a_deep_expression_is_read():
     entries, warning = entries_in_source("clojure", f"(defn place [] {nested})\n", "app.clj", "app.clj")
     assert warning is None
     assert entries
+
+
+def test_constructor_calls_keep_the_anonymous_class_body_after_arguments():
+    source = "class C { Object first() { return new Box() { int run() { return Read(); } }; } }"
+    changed = source.replace("Read()", "Load()")
+    left = forms("java", source, "left.java")
+    right = forms("java", changed, "right.java")
+    found = find_duplicates(left + right, 0.0)
+    assert len(found) == 1
+    assert found[0].score < 1.0

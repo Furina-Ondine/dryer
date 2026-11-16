@@ -45,9 +45,16 @@ SKIP_DIRS = {
     "bin",
     "obj",
     "TestResults",
+    ".artifacts",
+    ".vs",
+    "BenchmarkDotNet.Artifacts",
 }
 
 TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
+
+
+def _test_directory(name: str) -> bool:
+    return name.lower() in TEST_DIRS or name.lower().endswith((".test", ".tests"))
 
 
 def language_of(path: str | Path) -> str | None:
@@ -61,6 +68,8 @@ def language_of(path: str | Path) -> str | None:
 def is_test_file(path: str | Path) -> bool:
     file_path = Path(path)
     name = file_path.name
+    if name.endswith(("Tests.cs", "Test.cs")):
+        return True
     if name.endswith("_test.go"):
         return True
     if name.endswith(("_test.clj", "_test.cljc", "_test.cljs", "_test.cljd", "_test.bb")):
@@ -82,11 +91,11 @@ def is_test_file(path: str | Path) -> bool:
         return True
     if name.endswith("_test.py") or (name.startswith("test_") and name.endswith(".py")):
         return True
-    return any(part in TEST_DIRS for part in file_path.parts)
+    return any(_test_directory(part) for part in file_path.parts)
 
 
 def _skipped_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name in TEST_DIRS
+    return name in SKIP_DIRS or _test_directory(name)
 
 
 def _walk(root: Path) -> list[Path]:

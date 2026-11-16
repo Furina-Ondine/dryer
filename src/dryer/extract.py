@@ -9,6 +9,7 @@ functions inside `mod tests` are test code and are skipped.
 from __future__ import annotations
 
 from dryer.astnorm import normalize
+from dryer.crapper_link import parse_document
 from dryer.clojure_read import is_candidate_form, max_line, normalize as normalize_clj
 from dryer.clojure_read import read_source
 from dryer.model import Entry
@@ -25,16 +26,6 @@ _DEFINITION_PARENTS = {
     "variable_declarator",
     "public_field_definition",
     "property_definition",
-}
-_CSHARP_MEMBERS = {
-    "method_declaration",
-    "constructor_declaration",
-    "destructor_declaration",
-    "operator_declaration",
-    "conversion_operator_declaration",
-    "accessor_declaration",
-    "property_declaration",
-    "indexer_declaration",
 }
 
 
@@ -153,83 +144,70 @@ def _rust_nodes(data: bytes, root) -> list:
     return found
 
 
-def _csharp_nodes(data: bytes, root) -> list:
-    found = []
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        if node.type in _CSHARP_MEMBERS and _has(node, "block", "arrow_expression_clause"):
-            found.append(node)
-            continue
-        stack.extend(reversed(node.children))
-    return found
-
-
 _PICKERS = {
     "java": ("java", _java_nodes),
     "go": ("go", _go_nodes),
     "python": ("python", _python_nodes),
     "typescript": (_grammar, _typescript_nodes),
     "rust": ("rust", _rust_nodes),
-    "csharp": ("c_sharp", _csharp_nodes),
 }
 
 
-def _entry(language: str, file: str, first, last, normalized) -> Entry:
+def _entry(language: str, file: str, first_line: int, last_line: int, normalized) -> Entry:
     return Entry(
         language=language,
         file=file,
-        start_line=start_line(first),
-        end_line=end_line(last),
+        start_line=first_line,
+        end_line=last_line,
         nodes=node_count(normalized),
         fingerprints=fingerprints(normalized),
     )
-
-
-def _csharp_top_level(data: bytes, root, file: str) -> list[Entry]:
-    statements = [node for node in root.named_children if node.type == "global_statement"]
-    if not statements:
-        return []
-    normalized = [K("top_level"), *(normalize(node, data) for node in statements)]
-    return [_entry("csharp", file, statements[0], statements[-1], normalized)]
 
 
 def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entry]:
     grammar_or_name, pick = _PICKERS[language]
     grammar = grammar_or_name(path) if callable(grammar_or_name) else grammar_or_name
     data, tree = parse(source, grammar)
-    entries = _csharp_top_level(data, tree.root_node, file) if language == "csharp" else []
+    entries = []
     for node in pick(data, tree.root_node):
         normalized = normalize(node, data)
         if normalized is None:
             continue
-        entries.append(_entry(language, file, node, node, normalized))
+        entries.append(_entry(language, file, start_line(node), end_line(node), normalized))
     return entries
 
 
-def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
+def _clojure_entries(source: str, path: str, file: str, project_root=None) -> tuple[list[Entry], str | None]:
     forms, warning = read_source(source)
     entries = []
     for form in forms:
         if not is_candidate_form(form):
             continue
         normalized = normalize_clj(form)
-        entries.append(
-            Entry(
-                language="clojure",
-                file=file,
-                start_line=form.line,
-                end_line=max_line(form),
-                nodes=node_count(normalized),
-                fingerprints=fingerprints(normalized),
-            )
-        )
+        entries.append(_entry("clojure", file, form.line, max_line(form), normalized))
     return entries, warning
 
 
-def entries_in_source(language: str, source: str, path: str, file: str) -> tuple[list[Entry], str | None]:
-    if language == "clojure":
-        return _clojure_entries(source, file)
+def _csharp_entries(source: str, path: str, file: str, project_root=None) -> tuple[list[Entry], str | None]:
+    document = parse_document(source, "csharp", path, project_root)
+    data = source.encode("utf-8")
+    entries = []
+    for unit in document.units:
+        parts = [normalize(node, data) for node in unit.syntax]
+        normalized = parts[0] if len(parts) == 1 else [K("executable_unit"), *parts]
+        entries.append(_entry("csharp", file, unit.start_line, unit.end_line, normalized))
+    return entries, None
+
+
+_READERS = {"clojure": _clojure_entries, "csharp": _csharp_entries}
+
+
+def entries_in_source(
+    language: str, source: str, path: str, file: str, project_root=None
+) -> tuple[list[Entry], str | None]:
+    reader = _READERS.get(language)
+    if reader is not None:
+        return reader(source, path, file, project_root)
     if language not in _PICKERS:
         return [], None
     return _tree_entries(language, source, path, file), None

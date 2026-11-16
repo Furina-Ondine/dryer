@@ -57,6 +57,8 @@ Arguments:
 With no paths, source files under the project root are compared. Directories
 named {_skipped_directory_text()} are skipped, as are *_test.go, *.test.cts,
 *.spec.cts, *.spec.ts, test_*.py, and *_test.py files.
+C# *Tests.cs and *Test.cs files and directories ending in .Tests or .Test are
+also skipped during discovery; a test file can be named explicitly.
 
 Clojure compares every top-level form except ns. The other languages compare
 functions and methods. A form is only compared with forms in the same language.
@@ -66,7 +68,7 @@ properties/indexers. Top-level statements form one candidate. Generated *.g.cs,
 
 Exit codes:
   0  the report was written
-  1  usage error
+  1  usage, dependency or syntax error
   2  unknown output format
 """
 
@@ -109,6 +111,35 @@ def _count(value: str, option: str) -> int:
     return parsed
 
 
+_VALUE_OPTIONS = {
+    "--root": ("project_root", lambda value, _option: Path(value)),
+    "--threshold": ("threshold", _number),
+    "--min-lines": ("min_lines", _count),
+    "--min-nodes": ("min_nodes", _count),
+    "--format": ("format", lambda value, _option: value),
+}
+_SWITCHES = {"--edn": ("format", "edn"), "--text": ("format", "text"), "--changed": ("changed", True)}
+
+
+def _read_argument(args: list[str], index: int, options: Options) -> int:
+    arg = args[index]
+    if arg in {"-s", "--source-root"}:
+        options.source_roots.append(_take(args, index, arg))
+        return 2
+    if arg in _VALUE_OPTIONS:
+        field_name, convert = _VALUE_OPTIONS[arg]
+        setattr(options, field_name, convert(_take(args, index, arg), arg))
+        return 2
+    if arg in _SWITCHES:
+        field_name, value = _SWITCHES[arg]
+        setattr(options, field_name, value)
+        return 1
+    if arg.startswith("-"):
+        raise ValueError(f"Unknown option: {arg}")
+    options.positionals.append(arg)
+    return 1
+
+
 def parse_args(argv: list[str] | None = None) -> Options:
     args = list(sys.argv[1:] if argv is None else argv)
     if any(arg in {"-h", "--help"} for arg in args):
@@ -117,47 +148,7 @@ def parse_args(argv: list[str] | None = None) -> Options:
     index = 0
     try:
         while index < len(args):
-            arg = args[index]
-            if arg in {"-s", "--source-root"}:
-                options.source_roots.append(_take(args, index, arg))
-                index += 2
-                continue
-            if arg == "--root":
-                options.project_root = Path(_take(args, index, arg))
-                index += 2
-                continue
-            if arg == "--threshold":
-                options.threshold = _number(_take(args, index, arg), arg)
-                index += 2
-                continue
-            if arg == "--min-lines":
-                options.min_lines = _count(_take(args, index, arg), arg)
-                index += 2
-                continue
-            if arg == "--min-nodes":
-                options.min_nodes = _count(_take(args, index, arg), arg)
-                index += 2
-                continue
-            if arg == "--format":
-                options.format = _take(args, index, arg)
-                index += 2
-                continue
-            if arg == "--edn":
-                options.format = "edn"
-                index += 1
-                continue
-            if arg == "--text":
-                options.format = "text"
-                index += 1
-                continue
-            if arg == "--changed":
-                options.changed = True
-                index += 1
-                continue
-            if arg.startswith("-"):
-                raise ValueError(f"Unknown option: {arg}")
-            options.positionals.append(arg)
-            index += 1
+            index += _read_argument(args, index, options)
     except ValueError as exc:
         return Options(action="help", message=f"{exc}\n\n{HELP}", exit_code=1)
     if options.format not in {"text", "edn"}:
@@ -286,27 +277,12 @@ def select_files(options: Options) -> list[Path]:
     return sorted({path.resolve() for path in files}, key=lambda path: path.as_posix())
 
 
-def run(argv: list[str] | None = None) -> int:
-    options = parse_args(argv)
-    if options.action == "help":
-        stream = sys.stdout if options.exit_code == 0 else sys.stderr
-        print(options.message, file=stream, end="" if options.message.endswith("\n") else "\n")
-        return options.exit_code
-    if options.action == "format":
-        print(options.message, file=sys.stderr, end="")
-        return options.exit_code
-
-    root = options.project_root.resolve()
+def _analyze(options: Options, root: Path, files: list[Path]) -> int:
     try:
-        files = select_files(options)
-    except GitStatusError as exc:
-        print(exc.message, file=sys.stderr)
-        return exc.code
-    if not files:
-        print("No source files to analyze.")
-        return 0
-
-    entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
+        entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
+    except (ImportError, SyntaxError) as exc:
+        print(f"dryer: {exc}", file=sys.stderr)
+        return 1
     for warning in warnings:
         print(f"dryer: {warning}", file=sys.stderr)
     candidates = find_duplicates(entries, options.threshold)
@@ -317,6 +293,28 @@ def run(argv: list[str] | None = None) -> int:
         print(format_text(candidates), end="")
     print(f"Wrote {metrics}", file=sys.stderr)
     return 0
+
+
+def _show_action(options: Options) -> int:
+    stream = sys.stdout if options.exit_code == 0 else sys.stderr
+    print(options.message, file=stream, end="" if options.message.endswith("\n") else "\n")
+    return options.exit_code
+
+
+def run(argv: list[str] | None = None) -> int:
+    options = parse_args(argv)
+    if options.action != "scan":
+        return _show_action(options)
+    root = options.project_root.resolve()
+    try:
+        files = select_files(options)
+    except GitStatusError as exc:
+        print(exc.message, file=sys.stderr)
+        return exc.code
+    if not files:
+        print("No source files to analyze.")
+        return 0
+    return _analyze(options, root, files)
 
 
 def main(argv: list[str] | None = None) -> None:

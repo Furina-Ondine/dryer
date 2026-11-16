@@ -1,6 +1,6 @@
 import pytest
 
-from dryer.cli import run
+from dryer.cli import parse_args, run, select_files
 from dryer.discover import iter_source_files, language_of
 from dryer.extract import entries_in_source
 from dryer.scan import find_duplicates
@@ -151,3 +151,78 @@ def test_csharp_conditional_calls_preserve_called_operations(operation):
     changed = source.replace("Filter", "Select")
     assert score(source, renamed) == 1.0
     assert score(source, changed) < 1.0
+
+
+def test_csharp_default_discovery_excludes_dotnet_test_and_artifact_paths(tmp_path):
+    names = (
+        "src/Production.cs", "Acme.Tests/Hidden.cs", "ACME.TEST/Hidden.cs",
+        "src/ThingTests.cs", "src/ThingTest.cs", "src/Contest.cs", "TestsData/Sample.cs",
+        ".artifacts/Generated.cs", ".vs/Cached.cs", "BenchmarkDotNet.Artifacts/Generated.cs",
+    )
+    for name in names:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("class C { int M() => 1; }", encoding="utf-8")
+    selected = select_files(parse_args(["--root", str(tmp_path)]))
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in selected) == [
+        "TestsData/Sample.cs", "src/Contest.cs", "src/Production.cs",
+    ]
+    for name in ("Acme.Tests/Hidden.cs", "ACME.TEST/Hidden.cs", "src/ThingTests.cs", "src/ThingTest.cs"):
+        assert select_files(parse_args(["--root", str(tmp_path), name])) == [(tmp_path / name).resolve()]
+
+
+def test_csharp_ref_return_assignment_uses_the_complete_compiler_syntax():
+    source = """class C {
+  void Copy(ref int destination, ref int source, int index) {
+    Unsafe.Add(ref destination, index) = Unsafe.Add(ref source, index);
+  }
+}
+"""
+    found = entries(source)
+    assert [(entry.start_line, entry.end_line) for entry in found] == [(2, 4)]
+    printed = " ".join(found[0].fingerprints)
+    assert "SimpleAssignmentExpression" in printed
+    assert "InvocationExpression" in printed
+    assert "Add" in printed
+
+
+def test_csharp_invalid_syntax_is_reported_instead_of_scored():
+    with pytest.raises(SyntaxError, match="invalid.cs"):
+        entries_in_source("csharp", "class C { int Broken( => 1; }", "invalid.cs", "invalid.cs")
+
+
+def test_csharp_unicode_before_identifiers_keeps_source_spans_and_call_names():
+    source = '// 🧪 中文\r\nclass C {\r\n string 标记 = "😀";\r\n int 计算(int 输入) => 转换(输入);\r\n}\r\n'
+    found = entries(source)
+    assert [(entry.start_line, entry.end_line) for entry in found] == [(4, 4)]
+    printed = " ".join(found[0].fingerprints)
+    assert "转换" in printed
+    assert "输入" not in printed
+
+
+def test_csharp_top_level_compiler_units_keep_the_native_statement_structure():
+    found = entries("var value = Read();\nWrite(value);\n")
+    assert len(found) == 1
+    assert (found[0].start_line, found[0].end_line) == (1, 2)
+    assert "GlobalStatement" in " ".join(found[0].fingerprints)
+
+
+def test_csharp_cli_reports_parse_errors_without_writing_a_partial_snapshot(tmp_path, capsys):
+    (tmp_path / "invalid.cs").write_text("class C { int Broken( => 1; }", encoding="utf-8")
+    assert run(["--root", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert "invalid.cs" in captured.err
+    assert captured.out == ""
+    assert not (tmp_path / ".metrics" / "dry.edn").exists()
+
+
+@pytest.mark.parametrize("parentheses", ["", "()"])
+def test_csharp_object_initializers_preserve_the_type_and_complete_structure(parentheses):
+    source = f"class C {{ object First() => new Box{parentheses} {{ Value = Read() }}; }}"
+    other_type = source.replace("new Box", "new Other")
+    extra_member = source.replace("Value = Read()", "Value = Read(), Next = Read()")
+    other_callee = source.replace("Read()", "Load()")
+    assert "Box" in " ".join(entries(source)[0].fingerprints)
+    assert score(source, other_type) < 1.0
+    assert score(source, extra_member) < 1.0
+    assert score(source, other_callee) < 1.0

@@ -1,55 +1,64 @@
 # C# support development evidence
 
-The public language key is `csharp`; the parser grammar is `c_sharp`. Existing
-`Entry`, duplicate report and EDN formats remain compatible.
+C# uses Crapper's shared SDK Roslyn frontend. Dryer consumes its executable
+units and native syntax roles through the existing extraction registry,
+normalizer, fingerprints, Jaccard comparison and report formats. It has no
+second C# parser or private executable-member walker.
 
-## 2026-11-14: executable C# members
+## Ordered development
 
-1. Read the extraction, discovery, normalization and CLI paths and the ub-mode
-   skill before choosing the extension points. Inspected the installed C# parser
-   with real constructor/operator/accessor/expression-body samples.
-2. Added C# behavior tests first. The initial run failed all 15 cases because
-   `.cs` was unknown and C# extraction returned no forms.
-3. Added `.cs` discovery and executable-member extraction. Local functions and
-   lambdas remain inside their member; declarations without executable bodies
-   contribute no candidates. Added invocation, generic-call and member-access
-   normalization while preserving call names and constructed type names.
-4. Added .NET build/generated-file exclusions and a real CLI report/metrics test.
-   The full regression suite passed: **104 tests**.
-5. Installed `coverage` into the existing repository-local virtual environment
-   for the quality gate. A first custom coverage command wrote LCOV outside the
-   tool's discovery location; reran Crapper with its standard coverage command.
-6. Crapper passed for all three modified analysis modules: maximum CRAP **8.2**;
-   `_csharp_nodes` has 100% line coverage and CRAP **4.0**. Dryer reported no
-   duplicate pair at threshold **0.8** in those modules.
-7. Ran Mutator against all three modified analysis modules, with its standard
-   Python runner and `--no-coverage --mutate-all --max-workers 4`: **106 killed,
-   0 survived, 0 uncovered**. This executes every supported mutation regardless
-   of coverage filtering. Mutator has no sites for the language/node-type
-   lookup tables, whose behavior is checked by the C# tests.
-   An initial custom test command assumed an environment variable that Mutator
-   does not provide and failed its baseline; the reported successful run uses
-   the standard Python runner.
+1. Added failing discovery/member tests, then registered `.cs` and executable
+   bodies. Local functions and lambdas belong to their enclosing member;
+   top-level statements are one ordered candidate.
+2. Pinned operation and constructed-type names, conditional/generic calls,
+   accessor spans and generated/test-file discovery. Language registration
+   follows the existing reader extension point.
+3. Reproduced legal ref-return syntax being rejected and malformed syntax being
+   accepted by the previous parser. Replaced the C# reader with shared compiler
+   documents and units. Unicode/CRLF ranges and diagnostics are behavior tests.
+4. A Java anonymous class exposed discarded trailing call syntax. The common
+   call job list now retains receivers, arguments and trailing children once.
+   Compiler identifier tokens also survive path traversal so generic callee
+   names remain significant.
+5. Replaced the CLI option ladder with value/switch tables after its CRAP gate
+   failed. Kept argument, report and exit behavior covered.
+6. Tested missing Crapper imports in an isolated process and in the current
+   process, including a broken installed package shadowing a valid sibling.
+   CI supplies the matching same-owner Crapper checkout and .NET SDK.
 
-## 2026-11-14: modern C# executable forms
+## Verification
 
-1. Added three failing behavior cases: top-level executable statements were
-   missing, and both ordinary and generic conditional calls lost their callee
-   names (`Filter` and `Select` had identical fingerprints).
-2. Grouped top-level statements into one candidate, keeping local functions and
-   lambdas inside it. Reused one entry builder for ordinary and grouped forms.
-   Added conditional/member-binding normalization through the existing attribute
-   path so conditional call names survive.
-3. The full suite passed **107 tests**. Crapper passed all modified analysis
-   modules (maximum CRAP **8.2**, top-level grouping **3.0** at 100% coverage).
-   Dryer found no duplicate at **0.8**. A fresh complete mutation run passed:
-   **112 killed, 0 survived, 0 uncovered**, using the same command below.
+The full regression suite passes 123 tests. All modified production functions
+have CRAP below 10 (maximum 9). Dryer reports no duplicate candidates at 0.8
+across the touched production modules.
 
-Reproduce from the repository root with the local companion repositories:
+Early all-killed mutation runs were invalidated: the unchanged private worker
+could fail because of missing launcher/dependency setup. They are not evidence.
+The corrected control first proves an unchanged worker passes, then runs the
+same non-launcher tests for each supported mutation. Full launcher integration
+remains in the complete regression suite.
+
+The verified changed-function results are 77 killed and five surviving
+head-flag mutations in `_call_jobs`. Those five affect callee mode, which ignores
+that flag, or argument/type-argument/trailing composite wrappers, which reset it
+before visiting their children. They are equivalent for the supported call
+shapes. Separate Java and compiler-AST behavior tests pin child order, call
+names and trailing syntax. Three earlier non-equivalent survivors in import
+precedence and single/multiple-unit assembly were killed by added behavior tests.
+
+Real project runs use Metaheuristics.NET, v2rayN, runtime's CommandLine module,
+Avalonia.Base, PowerShell's engine and Files.Shared. The workspace validation
+log distinguishes full syntax audits from selected-module duplicate analysis.
+
+## Reproduce
+
+From sibling checkouts containing matching Crapper and Mutator versions:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
-..\crapper\crapper.ps1 --root . --threshold 9.999 src/dryer/discover.py src/dryer/extract.py src/dryer/astnorm.py
-.\dryer.ps1 --root . --threshold 0.8 src/dryer/discover.py src/dryer/extract.py src/dryer/astnorm.py
-..\mutator\mutator.ps1 --root . --no-coverage --mutate-all --max-workers 4 src/dryer/discover.py src/dryer/extract.py src/dryer/astnorm.py
+..\crapper\crapper.ps1 --root . --threshold 9.999 --use-existing-coverage src/dryer
+.\dryer.ps1 --root . --threshold 0.8 src/dryer
 ```
+
+Mutation commands must have the matching compiler dependency and a passing
+unchanged worker. Install or merge Crapper's frontend before this release.
