@@ -369,7 +369,7 @@ def _assemble(node, mode: str, head: bool, cache):
     return _assemble_children(node, cache)
 
 
-def _normalize(node, head: bool = False):
+def _normalize(node, head: bool = False, *, leaf=_try_leaf, jobs=_jobs, assemble=_assemble):
     # Post-order. A 1,200-deep expression must not raise RecursionError.
     cache = {}
     stack = [(node, "norm", head, False)]
@@ -379,13 +379,13 @@ def _normalize(node, head: bool = False):
         if not expanded:
             if key in cache:
                 continue
-            leaf = _try_leaf(current, mode, is_head)
-            if leaf is not _PENDING:
-                cache[key] = leaf
+            value = leaf(current, mode, is_head)
+            if value is not _PENDING:
+                cache[key] = value
                 continue
             stack.append((current, mode, is_head, True))
-            for child, child_mode, child_head in reversed(_jobs(current, mode, is_head)):
+            for child, child_mode, child_head in reversed(jobs(current, mode, is_head)):
                 stack.append((child, child_mode, child_head, False))
             continue
-        cache[key] = _assemble(current, mode, is_head, cache)
+        cache[key] = assemble(current, mode, is_head, cache)
     return cache[(id(node), "norm", head)]

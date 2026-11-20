@@ -1,6 +1,6 @@
 # dryer
 
-dryer finds candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, and Python. One run detects the language of each source file, normalizes that language's forms, and reports pairs whose structure is close enough to review.
+dryer finds candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, Python, and C#. One run detects the language of each source file, normalizes that language's forms, and reports pairs whose structure is close enough to review.
 
 Clojure follows [dry4clj](https://github.com/unclebob/dry4clj). The other languages use the same idea on the functions and methods [crapper](https://github.com/unclebob/crapper) and [mutator](https://github.com/unclebob/mutator) already treat as one unit. A form is only compared with forms written in the same language.
 
@@ -74,6 +74,15 @@ Installation needs package-index access. With tree-sitter-language-pack 1.x,
 the first scan of a language also downloads its parser from GitHub and caches
 it locally; later scans reuse it. The bundled-parser 0.x releases supported by
 the dependency range work without that download.
+
+For C# scans, install the companion Crapper checkout with C# support in the
+same Python environment as Dryer and use a .NET SDK supported by Crapper.
+After running the Dryer launcher once, use
+`.venv\Scripts\python.exe -m pip install -e ..\crapper` on Windows or
+`.venv/bin/python -m pip install -e ../crapper` on Linux and macOS, from the
+Dryer checkout. Dryer uses Crapper's executable members and groups top-level
+statements into one candidate. C# syntax errors stop the scan with a source
+location.
 
 ```bash
 ./dryer src/demo src/ui          # these files and trees

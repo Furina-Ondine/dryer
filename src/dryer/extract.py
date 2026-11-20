@@ -9,10 +9,12 @@ functions inside `mod tests` are test code and are skipped.
 from __future__ import annotations
 
 from dryer.astnorm import normalize
+from dryer.csharp_link import units_in_source
+from dryer.csharp_norm import normalize as normalize_csharp
 from dryer.clojure_read import is_candidate_form, max_line, normalize as normalize_clj
 from dryer.clojure_read import read_source
 from dryer.model import Entry
-from dryer.shape import fingerprints, node_count
+from dryer.shape import K, fingerprints, node_count
 from dryer.treesitter import child_of_type, descendants, end_line, node_text, parse, start_line
 
 _TS_FUNCTION = {
@@ -194,9 +196,30 @@ def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
     return entries, warning
 
 
-def entries_in_source(language: str, source: str, path: str, file: str) -> tuple[list[Entry], str | None]:
+def _csharp_entries(source: str, path: str, file: str, project_root) -> list[Entry]:
+    data, units = units_in_source(source, path, project_root)
+    entries = []
+    for unit in units:
+        parts = [normalize_csharp(node, data) for node in unit.nodes]
+        normalized = parts[0] if len(parts) == 1 else [K("executable_unit"), *parts]
+        entries.append(Entry(
+            language="csharp",
+            file=file,
+            start_line=unit.function.start_line,
+            end_line=unit.function.end_line,
+            nodes=node_count(normalized),
+            fingerprints=fingerprints(normalized),
+        ))
+    return entries
+
+
+def entries_in_source(
+    language: str, source: str, path: str, file: str, *, project_root=None
+) -> tuple[list[Entry], str | None]:
     if language == "clojure":
         return _clojure_entries(source, file)
+    if language == "csharp":
+        return _csharp_entries(source, path, file, project_root), None
     if language not in _PICKERS:
         return [], None
     return _tree_entries(language, source, path, file), None
