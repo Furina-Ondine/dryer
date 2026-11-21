@@ -42,7 +42,10 @@ abstract class C {
     ]
 
 
-@pytest.mark.parametrize("call", ["items.Filter<int>(input)", "items?.Filter<int>(input)"])
+@pytest.mark.parametrize("call", [
+    "items.Filter(input)", "items?.Filter(input)",
+    "items.Filter<int>(input)", "items?.Filter<int>(input)",
+])
 def test_preserves_called_names_but_not_receiver_or_argument_names(call):
     source = f"class C {{ object Run(int input) => {call}; }}"
     normalized = fingerprints(source)
