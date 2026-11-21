@@ -7,6 +7,8 @@ The extensions and the skipped directories match crapper and mutator, with
 import os
 from pathlib import Path
 
+from dryer import csharp_link
+
 EXTENSIONS = {
     ".clj": "clojure",
     ".cljc": "clojure",
@@ -48,10 +50,18 @@ TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__"}
 
 def language_of(path: str | Path) -> str | None:
     file_path = Path(path)
+    if file_path.suffix == ".cs":
+        return csharp_link.language_of(file_path)
     name = file_path.name
     if name.endswith(".d.ts"):
         return None
     return EXTENSIONS.get(file_path.suffix)
+
+
+def is_production_source(path: Path) -> bool:
+    if path.suffix == ".cs":
+        return csharp_link.is_production_source(path)
+    return language_of(path) is not None and not is_test_file(path)
 
 
 def is_test_file(path: str | Path) -> bool:
@@ -95,7 +105,7 @@ def _walk(root: Path) -> list[Path]:
         dirnames[:] = [name for name in dirnames if not _skipped_dir(name)]
         for name in filenames:
             path = Path(dirpath) / name
-            if language_of(path) is None or is_test_file(path):
+            if not is_production_source(path):
                 continue
             found.append(path)
     return found
