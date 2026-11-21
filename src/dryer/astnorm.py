@@ -59,8 +59,6 @@ _LITERALS = {
     "undefined",
     "null_literal",
     "boolean_literal",
-    "real_literal",
-    "verbatim_string_literal",
     "template_string",
     "regex",
     "regex_literal",
@@ -121,7 +119,6 @@ _CALLS = {
     "method_invocation",
     "object_creation_expression",
     "new_expression",
-    "invocation_expression",
 }
 
 _ATTRIBUTES = {
@@ -130,20 +127,15 @@ _ATTRIBUTES = {
     "selector_expression",
     "field_access",
     "field_expression",
-    "member_access_expression",
-    "conditional_access_expression",
-    "member_binding_expression",
 }
 
 _SCOPED = {
     "scoped_identifier",
     "scoped_type_identifier",
-    "qualified_name",
-    "generic_name",
 }
 
 _ARG_LISTS = {"argument_list", "arguments"}
-_TYPE_ARGS = {"type_arguments", "type_parameters", "type_argument_list"}
+_TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
 
@@ -377,7 +369,7 @@ def _assemble(node, mode: str, head: bool, cache):
     return _assemble_children(node, cache)
 
 
-def _normalize(node, head: bool = False):
+def _normalize(node, head: bool = False, *, leaf=_try_leaf, jobs=_jobs, assemble=_assemble):
     # Post-order. A 1,200-deep expression must not raise RecursionError.
     cache = {}
     stack = [(node, "norm", head, False)]
@@ -387,13 +379,13 @@ def _normalize(node, head: bool = False):
         if not expanded:
             if key in cache:
                 continue
-            leaf = _try_leaf(current, mode, is_head)
-            if leaf is not _PENDING:
-                cache[key] = leaf
+            value = leaf(current, mode, is_head)
+            if value is not _PENDING:
+                cache[key] = value
                 continue
             stack.append((current, mode, is_head, True))
-            for child, child_mode, child_head in reversed(_jobs(current, mode, is_head)):
+            for child, child_mode, child_head in reversed(jobs(current, mode, is_head)):
                 stack.append((child, child_mode, child_head, False))
             continue
-        cache[key] = _assemble(current, mode, is_head, cache)
+        cache[key] = assemble(current, mode, is_head, cache)
     return cache[(id(node), "norm", head)]

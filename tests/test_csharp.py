@@ -55,6 +55,33 @@ def test_preserves_called_names_but_not_receiver_or_argument_names(call):
     assert fingerprints(source.replace("Filter", "Select")) != normalized
 
 
+@pytest.mark.parametrize("arguments", ["", "()"])
+def test_preserves_constructed_type_and_initializer(arguments):
+    source = f"class C {{ object Run() => new A.Box<int>{arguments} {{ Value = Read() }}; }}"
+    normalized = fingerprints(source)
+    assert '[:symbol "Box"]' in normalized
+    assert '[:symbol "Read"]' in normalized
+    assert fingerprints(source.replace("Box", "Bin")) != normalized
+    assert fingerprints(source.replace("Read", "Fetch")) != normalized
+
+
+def test_ref_return_assignment_preserves_generic_calls_and_byte_coordinates():
+    source = (
+        "using System.Runtime.CompilerServices;\r\n"
+        "class C {\r\n"
+        "  // 🧪 多字节字符\r\n"
+        "  void Copy(ref int input, ref int output) {\r\n"
+        "    Unsafe.Add<int>(ref output, 1) = Unsafe.Add<int>(ref input, 1);\r\n"
+        "  }\r\n"
+        "}\r\n"
+    )
+    entry, = extract(source)
+    assert (entry.start_line, entry.end_line) == (4, 6)
+    assert '[:symbol "Add"]' in entry.fingerprints
+    assert any("SimpleAssignmentExpression" in item and "InvocationExpression" in item
+               for item in entry.fingerprints)
+
+
 def test_scan_reports_duplicate_candidates(tmp_path: Path, capsys):
     source = 'class C { int M(int value) { return Transform(value); } }'
     (tmp_path / "left.cs").write_text(source, encoding="utf-8")
@@ -88,7 +115,18 @@ def test_invalid_csharp_is_diagnosed_without_writing_metrics(tmp_path: Path, cap
     assert run(["--root", str(tmp_path)]) == 1
     error = capsys.readouterr().err
     assert "broken.cs" in error
-    assert "Tree-sitter could not parse C# syntax" in error
+    assert "CS1" in error
+    assert not (tmp_path / ".metrics" / "dry.edn").exists()
+
+
+def test_ambiguous_csharp_project_is_diagnosed_without_writing_metrics(tmp_path: Path, capsys):
+    (tmp_path / "Source.cs").write_text("class C { int M() => 1; }", encoding="utf-8")
+    (tmp_path / "First.csproj").touch()
+    (tmp_path / "Second.csproj").touch()
+    assert run(["--root", str(tmp_path)]) == 1
+    error = capsys.readouterr().err
+    assert "Source.cs" in error
+    assert "project context is ambiguous" in error
     assert not (tmp_path / ".metrics" / "dry.edn").exists()
 
 

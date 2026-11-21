@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dryer.csharp_link import CSharpDependencyError, CSharpSyntaxError
+from dryer.csharp_link import CSharpDependencyError, CSharpRuntimeError, CSharpSyntaxError
 from dryer.discover import SKIP_DIRS, TEST_DIRS, is_production_source, iter_source_files, language_of
 from dryer.report import format_text, render_edn, write_metrics
 from dryer.scan import find_duplicates, scan_files
@@ -313,7 +313,7 @@ def run(argv: list[str] | None = None) -> int:
     except GitStatusError as exc:
         print(exc.message, file=sys.stderr)
         return exc.code
-    except (CSharpDependencyError, CSharpSyntaxError) as exc:
+    except (CSharpDependencyError, CSharpRuntimeError, CSharpSyntaxError) as exc:
         print(f"dryer: {exc}", file=sys.stderr)
         return 1
     _report_scan(entries, warnings, options, root)

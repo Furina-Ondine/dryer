@@ -34,7 +34,7 @@ def scan_files(
             continue
         source = path.read_text(encoding="utf-8", errors="replace")
         file = display_path(path, root)
-        found, warning = entries_in_source(language, source, path.as_posix(), file)
+        found, warning = entries_in_source(language, source, path.as_posix(), file, project_root=root.as_posix())
         if warning:
             warnings.append(f"{file}:{warning}")
         entries.extend(entry for entry in found if _keep(entry, min_lines, min_nodes))
