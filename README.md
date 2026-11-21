@@ -75,14 +75,14 @@ the first scan of a language also downloads its parser from GitHub and caches
 it locally; later scans reuse it. The bundled-parser 0.x releases supported by
 the dependency range work without that download.
 
-For C# scans, install the companion Crapper checkout with C# support in the
-same Python environment as Dryer.
+For C# scans, install the companion Crapper checkout with its Roslyn C# frontend
+in the same Python environment as Dryer and use a .NET SDK supported by Crapper.
 After running the Dryer launcher once, use
 `.venv\Scripts\python.exe -m pip install -e ..\crapper` on Windows or
 `.venv/bin/python -m pip install -e ../crapper` on Linux and macOS, from the
 Dryer checkout. Dryer uses Crapper's executable members and groups top-level
-statements into one candidate. The Tree-sitter parser reports syntax errors with
-a source location.
+statements into one candidate. C# syntax errors stop the scan with a source
+location.
 
 ```bash
 ./dryer src/demo src/ui          # these files and trees

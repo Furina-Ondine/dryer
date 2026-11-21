@@ -9,6 +9,10 @@ class CSharpSyntaxError(SyntaxError):
     """The C# parser could not extract complete syntax."""
 
 
+class CSharpRuntimeError(RuntimeError):
+    """The C# compiler frontend could not run."""
+
+
 _MISSING = (
     "C# analysis requires Crapper with C# support. "
     "Install the companion Crapper checkout in Dryer's Python environment."
@@ -33,12 +37,14 @@ def is_production_source(path):
     return _discovery().is_production_source(path)
 
 
-def units_in_source(source, path):
+def units_in_source(source, path, project_root):
     try:
         from crapper.languages.csharp import units_in_source as read
     except ImportError as error:
         raise CSharpDependencyError(_MISSING) from error
     try:
-        return read(source, path)
+        return read(source, path, project_root)
     except SyntaxError as error:
         raise CSharpSyntaxError(str(error)) from error
+    except RuntimeError as error:
+        raise CSharpRuntimeError(str(error)) from error
