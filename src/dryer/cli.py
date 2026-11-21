@@ -283,6 +283,16 @@ def select_files(options: Options) -> list[Path]:
     return sorted({path.resolve() for path in files}, key=lambda path: path.as_posix())
 
 
+def _report_scan(entries, warnings, options: Options, root: Path) -> None:
+    for warning in warnings:
+        print(f"dryer: {warning}", file=sys.stderr)
+    candidates = find_duplicates(entries, options.threshold)
+    metrics = write_metrics(candidates, root)
+    render = render_edn if options.format == "edn" else format_text
+    print(render(candidates), end="")
+    print(f"Wrote {metrics}", file=sys.stderr)
+
+
 def run(argv: list[str] | None = None) -> int:
     options = parse_args(argv)
     if options.action == "help":
@@ -306,15 +316,7 @@ def run(argv: list[str] | None = None) -> int:
     except (CSharpDependencyError, CSharpRuntimeError, CSharpSyntaxError) as exc:
         print(f"dryer: {exc}", file=sys.stderr)
         return 1
-    for warning in warnings:
-        print(f"dryer: {warning}", file=sys.stderr)
-    candidates = find_duplicates(entries, options.threshold)
-    metrics = write_metrics(candidates, root)
-    if options.format == "edn":
-        print(render_edn(candidates), end="")
-    else:
-        print(format_text(candidates), end="")
-    print(f"Wrote {metrics}", file=sys.stderr)
+    _report_scan(entries, warnings, options, root)
     return 0
 
 

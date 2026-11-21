@@ -26,20 +26,29 @@ def _grouped(node):
     return "group" in node.roles and len(node.named_children) == 1
 
 
-def _jobs(node, mode, head):
-    if _grouped(node):
-        return [(node.named_children[0], mode, head)]
-
+def _callee_jobs(node):
     roles = node.roles
-    if mode == "callee" and ("member_access" in roles or node.type == "SuppressNullableWarningExpression"):
+    if "member_access" in roles or node.type == "SuppressNullableWarningExpression":
         names = node.named_children
         target = names[-1] if names else None
         return [(child, "callee" if child is target else "norm", False) for child in node.children]
-    if mode == "callee" and "name_path" in roles:
+    if "name_path" in roles:
         return [
             (child, "callee" if child.roles.intersection({"identifier", "name_path"}) else "norm", False)
             for child in node.children
         ]
+    return None
+
+
+def _jobs(node, mode, head):
+    if _grouped(node):
+        return [(node.named_children[0], mode, head)]
+
+    if mode == "callee":
+        jobs = _callee_jobs(node)
+        if jobs is not None:
+            return jobs
+    roles = node.roles
     return [
         (child, "callee" if "call" in roles and "callee" in child.roles else "norm", False)
         for child in node.children
