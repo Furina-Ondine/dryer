@@ -8,7 +8,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dryer.discover import SKIP_DIRS, TEST_DIRS, is_test_file, iter_source_files, language_of
+from dryer.csharp_link import CSharpDependencyError, CSharpSyntaxError
+from dryer.discover import SKIP_DIRS, TEST_DIRS, is_production_source, iter_source_files, language_of
 from dryer.report import format_text, render_edn, write_metrics
 from dryer.scan import find_duplicates, scan_files
 
@@ -21,8 +22,8 @@ def _skipped_directory_text() -> str:
 HELP = f"""\
 Usage: dryer [options] [path-or-filter ...]
 
-Find candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, and
-Python. Each form is normalized — call and method names, operators, and
+Find candidate duplicate code in Clojure, Java, Go, TypeScript, Rust, Python,
+and C#. Each form is normalized — call and method names, operators, and
 tree shape stay; local names, field names, and literals do not — and compared
 with the other forms of the same language. The score is Jaccard similarity of
 those structural fingerprints, the same score as dry4clj.
@@ -30,7 +31,7 @@ those structural fingerprints, the same score as dry4clj.
 Prints a report and writes .metrics/dry.edn.
 
 Languages: Clojure (.clj .cljc .cljs .cljd .bb), Java (.java), Go (.go),
-TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py).
+TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py), C# (.cs).
 
 Options:
   -h, --help                    Print this help and exit.
@@ -58,12 +59,13 @@ With no paths, source files under the project root are compared. Directories
 named {_skipped_directory_text()} are skipped, as are *_test.go, *.test.cts,
 *.spec.cts, *.spec.ts, test_*.py, and *_test.py files.
 
-Clojure compares every top-level form except ns. The other languages compare
-functions and methods. A form is only compared with forms in the same language.
+Clojure compares every top-level form except ns. C# compares executable
+members and top-level statements. The other languages compare functions and
+methods. A form is only compared with forms in the same language.
 
 Exit codes:
   0  the report was written
-  1  usage error
+  1  usage or C# analysis error
   2  unknown output format
 """
 
@@ -241,9 +243,7 @@ def _tracked_source(path: Path, root: Path | None = None) -> bool:
             return False
     if not SKIP_DIRS.isdisjoint(parts):
         return False
-    if language_of(path) is None:
-        return False
-    return not is_test_file(path)
+    return is_production_source(path)
 
 
 def _changed_source(root: Path) -> list[Path]:
@@ -283,6 +283,16 @@ def select_files(options: Options) -> list[Path]:
     return sorted({path.resolve() for path in files}, key=lambda path: path.as_posix())
 
 
+def _report_scan(entries, warnings, options: Options, root: Path) -> None:
+    for warning in warnings:
+        print(f"dryer: {warning}", file=sys.stderr)
+    candidates = find_duplicates(entries, options.threshold)
+    metrics = write_metrics(candidates, root)
+    render = render_edn if options.format == "edn" else format_text
+    print(render(candidates), end="")
+    print(f"Wrote {metrics}", file=sys.stderr)
+
+
 def run(argv: list[str] | None = None) -> int:
     options = parse_args(argv)
     if options.action == "help":
@@ -296,23 +306,17 @@ def run(argv: list[str] | None = None) -> int:
     root = options.project_root.resolve()
     try:
         files = select_files(options)
+        if not files:
+            print("No source files to analyze.")
+            return 0
+        entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
     except GitStatusError as exc:
         print(exc.message, file=sys.stderr)
         return exc.code
-    if not files:
-        print("No source files to analyze.")
-        return 0
-
-    entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
-    for warning in warnings:
-        print(f"dryer: {warning}", file=sys.stderr)
-    candidates = find_duplicates(entries, options.threshold)
-    metrics = write_metrics(candidates, root)
-    if options.format == "edn":
-        print(render_edn(candidates), end="")
-    else:
-        print(format_text(candidates), end="")
-    print(f"Wrote {metrics}", file=sys.stderr)
+    except (CSharpDependencyError, CSharpSyntaxError) as exc:
+        print(f"dryer: {exc}", file=sys.stderr)
+        return 1
+    _report_scan(entries, warnings, options, root)
     return 0
 
 
